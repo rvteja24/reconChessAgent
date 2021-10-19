@@ -1,9 +1,7 @@
 import chess.engine
 import random
 from reconchess import *
-import os
 import visualizer as v
-STOCKFISH_ENV_VAR = 'STOCKFISH_EXECUTABLE'
 
 
 class TroutBot(Player):
@@ -19,20 +17,10 @@ class TroutBot(Player):
         self.color = None
         self.my_piece_captured_square = None
 
-        # make sure stockfish environment variable exists
-        if STOCKFISH_ENV_VAR not in os.environ:
-            raise KeyError(
-                'TroutBot requires an environment variable called "{}" pointing to the Stockfish executable'.format(
-                    STOCKFISH_ENV_VAR))
-
-        # make sure there is actually a file
-        stockfish_path = os.environ[STOCKFISH_ENV_VAR]
-        if not os.path.exists(stockfish_path):
-            raise ValueError('No stockfish executable found at "{}"'.format(stockfish_path))
-
-        stockfish_path = "C:\\Users\\rvtej\\Downloads\\stockfish_14_win_x64_avx2\\stockfish_14_x64_avx2.exe"
+        stockfish_path = "../stockfish_14_win_x64_avx2/stockfish_14_x64_avx2.exe"
         # initialize the stockfish engine
         self.engine = chess.engine.SimpleEngine.popen_uci(stockfish_path, setpgrp=True)
+
     def handle_game_start(self, color: Color, board: chess.Board, opponent_name: str):
         self.board = board
         self.color = color

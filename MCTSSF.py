@@ -1,17 +1,7 @@
-import math
-import random
-from collections import Counter
-
 import chess.engine
-
-from core import BoardInformation
 from chess import *
-from chess import engine
 from core import *
-from numpy.random import dirichlet
 
-STOCKFISH_ENV_VAR = 'STOCKFISH_EXECUTABLE'
-import os
 
 
 class Node:
@@ -46,18 +36,8 @@ class MonteCarlo:
                     self.all_moves_ids[Move(i, j)] = k
                     self.ids_all_moves[k] = Move(i, j)
                     k += 1
-        STOCKFISH_ENV_VAR = 'STOCKFISH_EXECUTABLE'
-        if STOCKFISH_ENV_VAR not in os.environ:
-            raise KeyError(
-                'TroutBot requires an environment variable called "{}" pointing to the Stockfish executable'.format(
-                    STOCKFISH_ENV_VAR))
 
-        # make sure there is actually a file
-        stockfish_path = os.environ[STOCKFISH_ENV_VAR]
-        if not os.path.exists(stockfish_path):
-            raise ValueError('No stockfish executable found at "{}"'.format(stockfish_path))
-
-        stockfish_path = "C:\\Users\\rvtej\\Downloads\\stockfish_14_win_x64_avx2\\stockfish_14_x64_avx2.exe"
+        stockfish_path = "stockfish_14_win_x64_avx2\\stockfish_14_x64_avx2.exe"
         # initialize the stockfish engine
         self.engine = chess.engine.SimpleEngine.popen_uci(stockfish_path, setpgrp=True)
 
