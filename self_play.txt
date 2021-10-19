@@ -1,1 +1,0 @@
-FOR /L %%G IN (0, 1, 4) Do start && run conda activate base && rc-bot-match theAgent.py theAgent.py --seconds_per_player 300

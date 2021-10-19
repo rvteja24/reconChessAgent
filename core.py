@@ -1,9 +1,14 @@
+import random
+
 from reconchess import *
 from chess import Board, Piece, Square
 import numpy as np
 from math import floor
 import math
+import time
 from collections import defaultdict
+from statistics import variance
+
 class BoardInformation:
     def __init__(self, board_state, p):
         self.board_state = board_state
@@ -20,7 +25,7 @@ class Core:
         #initialize the 3-d array for representing initial game state
         board = str(board).replace(" ", "").replace("\n", "")
         # print(board)
-        initial_board_plane = np.zeros((13,8,8))
+        initial_board_plane = np.zeros((13, 8, 8))
         for i in range(len(board)):
             if board[i] in self.layerMap:
                 initial_board_plane[self.layerMap[board[i]]][int(floor(i/8))][int(floor(i%8))] = 1
@@ -40,47 +45,128 @@ class Core:
             for i in range(8):
                 for j in range(8):
                     if each[i][j] == 1:
-                        positions[chess.square(j,i)] = self.inverseMap.get(piece_id)
+                        positions[chess.square(j, i)] = self.inverseMap.get(piece_id)
         board_copy.set_piece_map(positions)
         return board_copy
+
+    def vectorRepr(self, boards):
+        planes = []
+        for each in boards:
+            planes.append(self.OHVETransform(each.board_state, self.color))
+        plane_entropy = np.array([[[0 for _ in range(13)] for _ in range(8)] for _ in range(8)], dtype='float64')
+        for plane in planes:
+            plane_entropy += plane
+        plane_entropy /= len(planes)
+        return plane_entropy
 
     def chooseGrid(self, boards):
         planes = []
         for each in boards:
             planes.append(self.OHVETransform(each.board_state, self.color))
         bestVal = -math.inf
-        bestCount = 0
-        minGrid = [-1, -1]
-        plane_entropy = np.array([[0] * 8] * 8, dtype='float64')
+        bestCount = -math.inf
+        minGrid = 31
+        plane_entropy = np.array([[[0] * 8] * 8] * 6, dtype='float64')
         for each in planes:
-            plane_entropy += np.sum(each[:-1], axis=0)
+            each = each.reshape(13, 8, 8)
+            if self.color == 1:
+                plane_entropy += each[:6]
+            else:
+                plane_entropy += each[6:-1]
+        # print(plane_entropy)
         plane_entropy = plane_entropy / len(planes)
-        plane_entropy = np.flip(plane_entropy, axis=0)
+        plane_entropy = np.flip(plane_entropy, axis = 1)
+        # print(plane_entropy)
         # print(plane_entropy, self.color, "Color")
-        for i in range(3,8):
-            for j in range(3,8):
-                temp = 0
+        for i in range(3, 9):
+            for j in range(3, 9):
+                temp = -math.inf
+                ent = 0
                 c = 0
-                for h in range(i-3,i):
-                    for k in range(j-3,j):
-                        if 0 < plane_entropy[h][k] < 1:
-                            c += 1
-                            temp += plane_entropy[h][k]
-                if c > bestCount:
-                    bestCount = c
-                    minGrid = [i-1,j-1]
-                elif c == bestCount:
-                    if temp > bestVal:
-                        minGrid = [i - 1, j - 1]
-                        bestVal = temp
+                for l in range(6):
+                    for h in range(i-3, i):
+                        for k in range(j-3, j):
+                            if 0 < plane_entropy[l][h][k] < 1:
+                                ent += plane_entropy[l][h][k]
+                                c += 1
 
-        chosen = 31
-        if minGrid != [-1,-1]:
-            l = minGrid[0]
-            r = minGrid[1]
-            chosen = ((l-1) * 8) + (r-1)
+                temp = max(temp, c*ent)
+                            # if 0 < plane_entropy[l][h][k] < 1:
+                            #     c += 1
+                            #     temp += plane_entropy[l][h][k]
+                if temp > bestCount:
+                    bestCount = temp
+                    minGrid = ((i-2)*8) + (j-2)
+                # elif c == bestCount:
+                #     if temp < bestVal:
+                #         minGrid = ((i-2)*8) + (j-2)
+                #         bestVal = temp
         # print(chosen)
-        return chosen
+        return minGrid
+
+    def chooseGridV2(self, boards):
+        st = time.time()
+        senseGridVals  = defaultdict(lambda: defaultdict(int))
+        board_strings = []
+        n = len(boards)
+        for each in boards:
+            board_strings.append(self.stringify(each.board_state))
+
+        for i in range(3, 9):
+            for j in range(3, 9):
+                sense_square = ((i - 2) * 8) + (j - 2)
+                for board_string in board_strings:
+                    gridValue = ""
+                    for h in range(i - 3, i):
+                        for k in range(j - 3, j):
+                            square = ((h) * 8) + (k)
+                            gridValue += board_string[square]
+                    senseGridVals[sense_square][gridValue] += 1
+
+        # print(senseGridVals.keys())
+        bestSquare = 31
+        bestVal = 0
+        bestMean = math.inf
+        bv  = []
+        #Finding max(max(sets for each 3x3 grid))
+        for k, v in senseGridVals.items():
+            vals = list(v.values())
+            delta = n - max(vals)#-sum([(x*math.log(x/n))/n for x in vals])
+            # mean = (sum(vals)/len(vals))
+            # delta = sum([(x-mean)**2 for x in vals])
+            # if len(vals) - 1 > 0:
+            #     delta = delta/(len(vals)-1)
+            #     if delta != 0:
+            #         delta = (n-max(vals))/delta
+            #     else:
+            #         delta = math.inf
+            # else:
+            #     delta = 0
+            if delta > bestVal:
+                # bestSquare = k
+                bestVal = delta
+                bv = [k]
+            elif delta == bestVal:
+                bv.append(k)
+
+        # print(len(bv))
+        # for each in bv:
+        #     print(senseGridVals[each])
+        # bestSquare = random.choice(bestSquare)
+        return random.choice(bv)
+        et = time.time()
+        # print(et-st)
+        return bestSquare
+
+    def stringify(self, p):
+        p = p.piece_map()
+        s = ""
+        for i in range(64):
+            if i in p:
+                s += p[i].symbol()
+            else:
+                s += "."
+        return s
 
 
 

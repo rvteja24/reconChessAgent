@@ -1,0 +1,4 @@
+self_play.cmd
+self_play.cmd
+self_play.cmd
+self_play.cmd

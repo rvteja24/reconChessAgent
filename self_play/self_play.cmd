@@ -1,0 +1,1 @@
+FOR /L %%G IN (0,1,1000) DO rc-bot-match MCTSAgent.py troutBot.py --seconds_per_player 300
