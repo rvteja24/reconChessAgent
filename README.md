@@ -21,3 +21,5 @@ To connect to the server for playing ranked matches use:
     rc-connect MCTSAgent.py --ranked
 
 For unranked matches remove --ranked tag.
+
+Note: For troutBot.py in otherAgents update stockfish_path to absolute path to the stockfish exe file.
