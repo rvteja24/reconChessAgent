@@ -1,7 +1,7 @@
 import chess.engine
 import random
 from reconchess import *
-import visualizer as v
+# import visualizer as v
 
 
 class TroutBot(Player):
@@ -17,9 +17,9 @@ class TroutBot(Player):
         self.color = None
         self.my_piece_captured_square = None
 
-        stockfish_path = "../stockfish_14_win_x64_avx2/stockfish_14_x64_avx2.exe"
+        # stockfish_path = "../stockfish_14_win_x64_avx2/stockfish_14_x64_avx2.exe"
         # initialize the stockfish engine
-        self.engine = chess.engine.SimpleEngine.popen_uci(stockfish_path, setpgrp=True)
+        self.engine = chess.engine.SimpleEngine.popen_uci(r"C:\Users\rvtej\Documents\Summer2021\reconChessAgent\stockfish_14_win_x64_avx2\stockfish_14_x64_avx2.exe", setpgrp=True)
 
     def handle_game_start(self, color: Color, board: chess.Board, opponent_name: str):
         self.board = board
@@ -80,7 +80,7 @@ class TroutBot(Player):
     def handle_move_result(self, requested_move: Optional[chess.Move], taken_move: Optional[chess.Move],
                            captured_opponent_piece: bool, capture_square: Optional[Square]):
         # if a move was executed, apply it to our board
-        v.update(taken_move, self.color)
+        # v.update(taken_move, self.color)
         if taken_move is not None:
             self.board.push(taken_move)
 

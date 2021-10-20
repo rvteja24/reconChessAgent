@@ -7,7 +7,7 @@ from chess import Move
 from core import *
 from MCTSSF import MonteCarlo
 import os
-import visualizer as v
+# import visualizer as v
 from tensorflow.keras import models
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -18,6 +18,12 @@ class MCTSAgent(Player):
         self.current_model = models.load_model("value_net_v5")
         self.all_moves_ids = defaultdict(int)
         self.ids_all_moves = defaultdict(Move)
+        self.time_limit = int(os.environ.get("time_limit"))
+        self.depth = int(os.environ.get("depth"))
+        if self.time_limit == None:
+            self.time_limit = 20
+        if self.depth == None:
+            self.depth = 20
         k = 0
         for i in range(64):
             for j in range(64):
@@ -46,66 +52,55 @@ class MCTSAgent(Player):
 
     def handle_opponent_move_result(self, captured_my_piece: bool, capture_square: Optional[Square]):
         if captured_my_piece:
-            invalid_ids = set()
-            for i, each in enumerate(self.board_states):
+            i = 0
+            while i < len(self.board_states):
+                each = self.board_states[i]
                 piece_on_board = each.board_state.piece_at(capture_square)
                 if piece_on_board == None or piece_on_board.color == self.color:
-                    invalid_ids.add(i)
-
-            new_boards = []
-            for i, each in enumerate(self.board_states):
-                if i not in invalid_ids:
-                    new_boards.append(each)
-            self.board_states = new_boards
+                    del self.board_states[i]
+                else:
+                    i += 1
 
     def choose_sense(self, sense_actions: List[Square], move_actions: List[chess.Move], seconds_left: float) -> \
             Optional[Square]:
         return self.core.chooseGridV2(self.board_states)
 
     def handle_sense_result(self, sense_result: List[Tuple[Square, Optional[chess.Piece]]]):
-        invalid_ids = set()
-        for i, each in enumerate(self.board_states):
+        i = 0
+        while i < len(self.board_states):
+            each = self.board_states[i]
+            removed = False
             for square, piece in sense_result:
                 piece_on_board = each.board_state.piece_at(square)
                 if piece_on_board != piece:
-                    invalid_ids.add(i)
+                    del self.board_states[i]
+                    removed = True
                     break
+            if not removed:
+                i += 1
 
-        new_boards = []
-        for i, each in enumerate(self.board_states):
-            if i not in invalid_ids:
-                new_boards.append(each)
-        self.board_states = new_boards
-        print(self.color, "states after pruning: ", len(self.board_states), sense_result)
+        print(self.color, "states after pruning: ", len(self.board_states))#, sense_result)
 
     def choose_move(self, move_actions: List[chess.Move], seconds_left: float) -> Optional[chess.Move]:
         move_set = set(move_actions)
-        if seconds_left > 300:
-            iters = 6000
-        else:
-            iters = 3500
-        action, _ = self.mc.runSimAndReturnBest(self.board_states, iters, move_set, self.current_model,
-                                                self.color,
-                                                0)
-        if not action or action not in move_set:
-            action = None
+        action, _ = self.mc.runSimAndReturnBest(self.board_states, self.time_limit, move_set, self.current_model,
+                                                self.color, self.depth)
+
         return action
 
     def handle_move_result(self, requested_move: Optional[chess.Move], taken_move: Optional[chess.Move],
                            captured_opponent_piece: bool, capture_square: Optional[Square]):
 
-        if captured_opponent_piece:
-            invalid_ids = set()
-            for i, each in enumerate(self.board_states):
-                piece_on_board = each.board_state.piece_at(capture_square)
-                if piece_on_board is None or piece_on_board.color == self.color:
-                    invalid_ids.add(i)
-            new_boards = []
-            for i, each in enumerate(self.board_states):
-                if i not in invalid_ids:
-                    new_boards.append(each)
-            self.board_states = new_boards
-        v.update(taken_move, self.color)
+        if taken_move != requested_move:
+            i = 0
+            while i < len(self.board_states):
+                each = self.board_states[i].board_state
+                if requested_move in set(each.pseudo_legal_moves):
+                    del self.board_states[i]
+                else:
+                    i += 1
+
+        # v.update(taken_move, self.color)
         if taken_move is not None:
             new_boards = []
             for each in self.board_states:
@@ -115,26 +110,35 @@ class MCTSAgent(Player):
                     new_boards.append(each)
             self.board_states = new_boards
 
-        board_map = {}
-        random.shuffle(self.board_states)
+        if captured_opponent_piece:
+            i = 0
+            while i < len(self.board_states):
+                each = self.board_states[i]
+                piece_on_board = each.board_state.piece_at(capture_square)
+                if piece_on_board is None or piece_on_board.color != self.color:
+                    del self.board_states[i]
+                else:
+                    i += 1
+
+        board_map = set()
+        new_boards = []
+        # random.shuffle(self.board_states)
         for each in self.board_states:
             each.board_state.turn = not self.color
             actions = set(each.board_state.pseudo_legal_moves)
             board_string = self.mc.stringify(each.board_state)
-            val = 1
             if board_string not in board_map:
-                board_map[board_string] = (each.board_state, val, val)
+                board_map.add(board_string)
+                new_boards.append(BoardInformation(each.board_state, 1))
             for act in actions:
                 new_board = each.board_state.copy(stack=False)
                 new_board.turn = not self.color
                 new_board.push(act)
                 board_string = self.mc.stringify(new_board)
                 if board_string not in board_map:
-                    board_map[board_string] = (new_board, val, val)
+                    board_map.add(board_string)
+                    new_boards.append(BoardInformation(new_board, 1))
 
-        new_boards = []
-        for key, value in board_map.items():
-            new_boards.append(BoardInformation(value[0], 1))
         self.board_states = new_boards
 
     def handle_game_end(self, winner_color: Optional[Color], win_reason: Optional[WinReason],

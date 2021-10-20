@@ -1,7 +1,7 @@
 import chess.engine
 from chess import *
 from core import *
-import os
+
 
 class Node:
     def __init__(self, chosenPath: str = "", transitions: {str: ()} = {},
@@ -36,40 +36,32 @@ class MonteCarlo:
                     self.all_moves_ids[Move(i, j)] = k
                     self.ids_all_moves[k] = Move(i, j)
                     k += 1
-        stockfish_path = os.environ.get("sf_path")
-        if stockfish_path == None:
-            print("Here")
-            stockfish_path = "stockfish_14_win_x64_avx2\\stockfish_14_x64_avx2.exe"
+
+        stockfish_path = "stockfish_14_win_x64_avx2\\stockfish_14_x64_avx2.exe"
         # initialize the stockfish engine
         self.engine = chess.engine.SimpleEngine.popen_uci(stockfish_path, setpgrp=True)
-        self.engine.configure({"Skill Level": 20})
-        self.engine.configure({"Threads": 4})
-        self.engine.configure({"Hash": 128})
-        self.engine.configure({"UCI_Elo": 2850})
 
     # @profile
-    def runSimAndReturnBest(self, states: [BoardInformation], time_limit: int, actions, model, player, depth_limit):
-        if len(states) == 0:
-            return None, []
+    def runSimAndReturnBest(self, states: [BoardInformation], iterations: int, actions, model, player, c):
         self.color = player
         self.actions = set(actions)
         self.visited = set()
         allBoards = []
-        self.depth = depth_limit
+        self.depth = c
         for i, each in enumerate(states):
             allBoards.append(each.board_state)
 
         st = time.time()
-        et = time.time()
         i = 0
         parentNode = Node(chosenPath="r", transitions={})
-        while et - st < time_limit:
+        while i < iterations:
             i += 1
+
             boardChosen = random.choice(allBoards)
-            parentNode.currentCandidate = boardChosen
+            parentNode.currentCandidate = boardChosen.copy(stack=False)
             parentNode, _ = self.runOneAndUpdate(parentNode, player, model, rootMove=True)
-            et = time.time()
-        print(et - st, i)
+        et = time.time()
+        print(et - st)
         # print(parentNode.transitions.items())
         all_actions_distribution = defaultdict(float)
         for key, value in parentNode.transitions.items():
@@ -97,12 +89,12 @@ class MonteCarlo:
             else:
                 moves = root.currentCandidate.pseudo_legal_moves
             self.visited.add(root.path)
-            for each in moves:
-                if each not in root.transitions:
-                    root.transitions[each] = [[0, 0], Node(chosenPath=root.path,
-                                                           transitions={},
-                                                           currentCandidate=None)]
-
+            self.setChildNodes(root, model, player_color)
+            # for each in moves:
+            #     if each not in root.transitions:
+            #         root.transitions[each] = [[0, 0], Node(chosenPath=root.path,
+            #                                                transitions={},
+            #                                                currentCandidate=None)]
             # if player_color == self.color:
             value = self.evaluatePosition(root, model, player_color)
             return root, -value
@@ -115,39 +107,37 @@ class MonteCarlo:
 
         actionInfo = []
         actionList = []
+        if len(existingActions) == 0:
+            k = 1
+        else:
+            k = 1 / (len(existingActions))
         for act in currentActions:
             if act in existingActions:
                 actionInfo.append(existingActions.get(act)[0])
                 actionList.append(act)
             else:
-                actionInfo.append([0, 0])
+                actionInfo.append([0, 0, k])
                 actionList.append(act)
-                root.transitions[act] = [[0, 0], Node(chosenPath=root.path, transitions={},
-                                                      currentCandidate=None)]
+                root.transitions[act] = [[0, 0, k], Node(chosenPath=root.path, transitions={},
+                                                         currentCandidate=None)]
         if len(actionList) == 0:
             return root, 1
-
-        possibleKingAttack = self.enemySquareAttack(root.currentCandidate, player_color)
-
-        if possibleKingAttack:
-            action = possibleKingAttack
+        if self.color == player_color:
+            possibleKingAttack = self.enemySquareAttack(root.currentCandidate, player_color)
+            if possibleKingAttack:
+                action = possibleKingAttack
+            else:
+                actionId = self.pickAction(actionInfo, root.total)
+                action = actionList[actionId]
         else:
-            actionId = self.pickAction(actionInfo, root.total)
-            action = actionList[actionId]
-
-        # if self.color == player_color:
-        #     possibleKingAttack = self.enemySquareAttack(root.currentCandidate, player_color)
-        #     if possibleKingAttack:
-        #         action = possibleKingAttack
-        #     else:
-        #         actionId = self.pickAction(actionInfo, root.total)
-        #         action = actionList[actionId]
-        # else:
-        #
-        #         # action = random.choice(actionList)
+            possibleKingAttack = self.enemySquareAttack(root.currentCandidate, player_color)
+            if possibleKingAttack:
+                action = possibleKingAttack
+            else:
+                action = random.choice(actionList)
         if action not in root.transitions:
-            root.transitions[action] = [[0, 0], Node(chosenPath=root.path, transitions={},
-                                                     currentCandidate=None)]
+            root.transitions[action] = [[0, 0, k], Node(chosenPath=root.path, transitions={},
+                                                        currentCandidate=None)]
         root.total += 1
         futureCandidate = root.currentCandidate.copy(stack=False)
         futureCandidate.turn = player_color
@@ -162,6 +152,27 @@ class MonteCarlo:
         root.transitions[action][0][0] += 1
         return root, -val
 
+    def setChildNodes(self, root, model, player_color):
+        board = root.currentCandidate
+        actions = board.pseudo_legal_moves
+        if board.is_valid():
+            for each in actions:
+                p = self.engine.analyse(root.currentCandidate,
+                                        limit=chess.engine.Limit(depth=1, time=0.0000001), root_moves=[each])
+                val = p["score"].relative.score()
+                if val == None:
+                    val = p["score"].relative.score(mate_score=10000)
+                val = 1 / (1 + math.exp(-val / 2000))
+                root.transitions[each] = [[0, 0, val], Node(chosenPath=root.path,
+                                                            transitions={},
+                                                            currentCandidate=None)]
+        else:
+            for each in actions:
+                val = 1
+                root.transitions[each] = [[0, 0, val], Node(chosenPath=root.path,
+                                                            transitions={},
+                                                            currentCandidate=None)]
+
     def evaluatePosition(self, root, model, player_color):
         if root.currentCandidate.is_valid():
             p = self.engine.analyse(root.currentCandidate,
@@ -173,7 +184,7 @@ class MonteCarlo:
         else:
             if root.currentCandidate.is_game_over():
                 v = root.currentCandidate.result()
-                # print(v[0])
+                print(v[0])
                 if (v[0] == "0" and player_color is False) or (v[0] == "1" and player_color is True):
                     value = 1
                 else:
@@ -187,30 +198,23 @@ class MonteCarlo:
 
     # @profile
     def pickAction(self, action_values, total):
+        K = 11
+        p_sum = sum([p for _, _, p in action_values])
+        ucb_values = [self.uctval(a_t, q, K, total, p/p_sum) for a_t, q, p in action_values]
 
-        t = total
-        c1 = 1.25
-        c2 = 19652
-        ucb_values = [(q / (1 + a_t)) + ((math.sqrt(t + 1) / (1 + a_t)) * (c1 + math.log((1 + t + c2) / c2, 10))) for
-                      a_t, q in
-                      action_values]
-
-        if len(ucb_values) == 0:
-            return None
-        all_ = [0]
-        max_ = ucb_values[0]
-        for i in range(1, len(ucb_values)):
-            if ucb_values[i] > max_:
-                all_ = [i]
-                max_ = ucb_values[i]
-            elif ucb_values[i] == max_:
-                all_.append(i)
-        if len(all_) > 1:
-            return random.choice(all_)
+        best_vals = self.allmax(ucb_values)
+        if len(best_vals) > 1:
+            return random.choice(best_vals)
         else:
-            return all_[0]
+            return best_vals[0]
 
     # @profile
+    def uctval(self, a_t, q, c, t, p):
+        c1 = 1.25
+        c2 = 19625
+        q_ = q / (1 + a_t)
+        # q_scaled = (q_ + 100) / (200)
+        return (q_) + (p * (math.sqrt(t + 1) / (1 + a_t)) * (c1 + math.log((1 + t + c2) / c2)))
 
     # @profile
     def allmax(self, inp):
