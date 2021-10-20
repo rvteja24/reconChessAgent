@@ -3,6 +3,7 @@ from chess import *
 from core import *
 import os
 
+
 class Node:
     def __init__(self, chosenPath: str = "", transitions: {str: ()} = {},
                  total: int = 0, currentCandidate: Board = Board()):
@@ -38,7 +39,6 @@ class MonteCarlo:
                     k += 1
         stockfish_path = os.environ.get("sf_path")
         if stockfish_path == None:
-            print("Here")
             stockfish_path = "stockfish_14_win_x64_avx2\\stockfish_14_x64_avx2.exe"
         # initialize the stockfish engine
         self.engine = chess.engine.SimpleEngine.popen_uci(stockfish_path, setpgrp=True)
@@ -164,12 +164,27 @@ class MonteCarlo:
 
     def evaluatePosition(self, root, model, player_color):
         if root.currentCandidate.is_valid():
-            p = self.engine.analyse(root.currentCandidate,
-                                    limit=chess.engine.Limit(depth=self.depth, time=0.0000001))
-            val = p["score"].relative.score()
-            if val == None:
-                val = p["score"].relative.score(mate_score=10000)
-            value = val / 10000  # 2 * math.tanh(val / 400)
+            try:
+                p = self.engine.analyse(root.currentCandidate,
+                                        limit=chess.engine.Limit(depth=self.depth, time=0.0000001))
+                val = p["score"].relative.score()
+                if val == None:
+                    val = p["score"].relative.score(mate_score=10000)
+                value = val / 10000  # 2 * math.tanh(val / 400)
+            except:
+                if root.currentCandidate.is_game_over():
+                    v = root.currentCandidate.result()
+                    # print(v[0])
+                    if (v[0] == "0" and player_color is False) or (v[0] == "1" and player_color is True):
+                        value = 1
+                    else:
+                        value = -1
+                else:
+                    inp = self.core.OHVETransform(root.currentCandidate, player_color)
+                    inp = np.array([inp])
+                    out = model(inp, training=False)
+                    value = out.numpy()[0][0]
+
         else:
             if root.currentCandidate.is_game_over():
                 v = root.currentCandidate.result()

@@ -18,12 +18,16 @@ class MCTSAgent(Player):
         self.current_model = models.load_model("value_net_v5")
         self.all_moves_ids = defaultdict(int)
         self.ids_all_moves = defaultdict(Move)
-        self.time_limit = int(os.environ.get("time_limit"))
-        self.depth = int(os.environ.get("depth"))
+        self.time_limit = os.environ.get("time_limit")
+        self.depth = os.environ.get("depth")
         if self.time_limit == None:
             self.time_limit = 20
+        else:
+            self.time_limit = int(self.time_limit)
         if self.depth == None:
-            self.depth = 20
+            self.depth = 35
+        else:
+            self.depth = int(self.depth)
         k = 0
         for i in range(64):
             for j in range(64):
@@ -63,6 +67,8 @@ class MCTSAgent(Player):
 
     def choose_sense(self, sense_actions: List[Square], move_actions: List[chess.Move], seconds_left: float) -> \
             Optional[Square]:
+        if (len(self.board_states)) == 0:
+            return None
         return self.core.chooseGridV2(self.board_states)
 
     def handle_sense_result(self, sense_result: List[Tuple[Square, Optional[chess.Piece]]]):
@@ -79,10 +85,12 @@ class MCTSAgent(Player):
             if not removed:
                 i += 1
 
-        print(self.color, "states after pruning: ", len(self.board_states))#, sense_result)
+        print(self.color, "states after pruning: ", len(self.board_states))  # , sense_result)
 
     def choose_move(self, move_actions: List[chess.Move], seconds_left: float) -> Optional[chess.Move]:
         move_set = set(move_actions)
+        if len(self.board_states) == 0:
+            return None
         action, _ = self.mc.runSimAndReturnBest(self.board_states, self.time_limit, move_set, self.current_model,
                                                 self.color, self.depth)
 
